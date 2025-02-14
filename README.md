@@ -1,196 +1,174 @@
-# Whisper STT API for Home Assistant
+# Whisper API Server
 
-A FastAPI-based service that provides speech-to-text capabilities using OpenAI's Whisper model, designed to work with Home Assistant's Assist pipeline.
+A high-performance API server for OpenAI's Whisper speech recognition model, designed for Home Assistant integration.
 
 ## Features
 
-- Speech-to-text transcription using Whisper
-- Optional GPU acceleration with CUDA
-- Automatic model persistence
-- Streaming support with Voice Activity Detection (VAD)
-- Full Home Assistant Assist pipeline integration
-- Resource management and monitoring
-- Health checks and logging
-- Docker deployment ready
-- Reverse proxy support
 - Wyoming protocol support for seamless Home Assistant integration
-
-## Requirements
-
-- Docker and Docker Compose
-- FFmpeg
-- 4GB+ RAM (8GB recommended)
-- NVIDIA GPU with CUDA support (optional)
-- Network access to Home Assistant
-
-## Configuration
-
-### Environment Variables
-
-- `WHISPER_MODEL`: Whisper model to use (default: "tiny")
-- `USE_CUDA`: Enable GPU acceleration (default: "false")
-- `MAX_MEMORY`: Maximum memory usage in MB (default: 8192)
-- `MAX_CONCURRENT`: Maximum concurrent requests (default: 5)
-- `LOG_LEVEL`: Logging level (default: "INFO")
-- `TRUSTED_PROXIES`: Comma-separated list of trusted proxy hosts (optional)
-- `ROOT_PATH`: Root path when behind a proxy (optional)
-- `WYOMING_HOST`: Wyoming protocol host (default: "0.0.0.0")
-- `WYOMING_PORT`: Wyoming protocol port (default: 10300)
-
-## GPU Support
-
-To enable GPU acceleration:
-
-1. Set `USE_CUDA=true` in environment variables
-2. Uncomment the GPU section in `docker-compose.yml`
-3. Ensure NVIDIA Container Toolkit is installed
-4. Restart the container
-
-The service will automatically fall back to CPU if CUDA is not available.
-
-## Model Persistence
-
-Models are automatically downloaded on first use and persisted in a Docker volume. 
+- Real-time speech-to-text transcription
+- Multi-language support
+- Dynamic model switching
+- GPU acceleration (when available)
+- RESTful API endpoints
+- Health monitoring
+- Persistent model cache
+- Secure by default
 
 ## API Endpoints
 
-### Health Check
-```
-GET /health
-Response: {
-    "status": "healthy",
-    "model_loaded": true,
-    "model": "tiny",
-    "memory_usage_mb": float,
-    "languages": ["en", "es", ...]
-}
-```
+### REST API (Port 8000)
 
-### File Transcription
-```
-POST /transcribe
-Headers:
-  - X-Language: ISO 639-1 language code (optional)
-  - X-Model: Model name (optional)
+- `GET /health`: System health check and status
+- `POST /transcribe`: Simple file-based transcription
+  - Accepts audio file upload
+  - Headers:
+    - `x-language`: Optional language code
+    - `x-model`: Optional model name
 
-Body: 
-  - Multipart form with audio file
+### Wyoming Protocol (Port 10300)
 
-Response: {
-    "text": "transcribed text",
-    "language": "detected language",
-    "segments": [
-        {
-            "text": "segment text",
-            "start": float,
-            "end": float
-        }
-    ],
-    "duration": float
-}
-```
-
-### Streaming
-```
-POST /stream
-Response: {
-    "status": "ready",
-    "chunk_size": 30,  # milliseconds
-    "sample_rate": 16000,
-    "channels": 1,
-    "format": "pcm_s16le"
-}
-
-WebSocket /stream/{session_id}
-Events:
-1. run-start: Pipeline initialization
-   {
-     "type": "run-start"
-   }
-
-2. stt-start: Begin speech recognition
-   {
-     "type": "stt-start"
-   }
-
-3. stt-vad-start: Voice activity detected
-   {
-     "type": "stt-vad-start"
-   }
-
-4. stt-vad-end: Voice activity ended
-   {
-     "type": "stt-vad-end"
-   }
-
-5. stt-end: Recognition completed
-   {
-     "type": "stt-end",
-     "stt_output": {
-       "text": "transcribed text",
-       "language": "detected language"
-     }
-   }
-
-6. error: Error occurred
-   {
-     "type": "error",
-     "code": "error-code",
-     "message": "error message"
-   }
-
-Binary Audio Format:
-[stt_binary_handler_id (1 byte)][audio_chunk_data]
-```
-
-### Wyoming Protocol
-
-The server implements the Wyoming protocol on port 10300:
-
+Primary interface for Home Assistant integration:
 - `Info/AsrInfo`: Get server capabilities
 - `Transcribe`: Start transcription session
 - `AudioStart/AudioChunk/AudioStop`: Stream audio data
 - `Transcript`: Get transcription result
 - `Error`: Error information
 
-## Deployment
+## Quick Start
 
-1. Clone the repository
-2. Configure environment variables
-3. Start the container:
-   ```bash
-   docker-compose up -d
-   ```
+### Using Docker (Recommended)
 
-### Behind a Reverse Proxy
+1. Start the server:
+```bash
+docker-compose up -d
+```
 
-1. Set `TRUSTED_PROXIES` to your proxy's hostname
-2. Set `ROOT_PATH` if the API is not at the root path
-3. The service will automatically handle proxy headers
+2. Check the status:
+```bash
+curl http://localhost:8000/health
+```
 
-## Audio Requirements
+### Manual Installation
 
-- Sample Rate: 16kHz
+1. Install system dependencies:
+```bash
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install -y ffmpeg
+
+# Windows
+# Download and install ffmpeg from https://ffmpeg.org/download.html
+```
+
+2. Install Python dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Run the server:
+```bash
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WHISPER_MODEL` | Model to use (tiny/base/small/medium/large-v3) | tiny |
+| `MAX_MEMORY` | Maximum memory usage in MB | 8192 |
+| `MAX_CONCURRENT` | Maximum concurrent transcriptions | 5 |
+| `USE_CUDA` | Enable GPU acceleration | false |
+| `LOG_LEVEL` | Logging level | INFO |
+| `WYOMING_HOST` | Wyoming protocol host | 0.0.0.0 |
+| `WYOMING_PORT` | Wyoming protocol port | 10300 |
+
+### Available Models
+
+| Model | Size | Memory | Speed | Accuracy |
+|-------|------|---------|--------|-----------|
+| tiny | 75MB | 1GB | Fastest | Good |
+| base | 150MB | 1GB | Fast | Better |
+| small | 500MB | 2GB | Medium | Great |
+| medium | 1.5GB | 4GB | Slow | Excellent |
+| large-v3 | 3GB | 8GB | Slowest | Best |
+
+## Audio Format
+
+- Sample rate: 16kHz
+- Bit depth: 16-bit
 - Channels: Mono
-- Bit Depth: 16-bit
-- Format: Any format supported by FFmpeg (will be converted automatically)
+- Format: PCM WAV or raw audio
 
-## Error Codes
+## Performance Tuning
 
-- `stt-provider-missing`: STT provider not available
-- `stt-provider-unsupported-metadata`: Unsupported audio format
-- `stt-stream-failed`: Processing error
-- `stt-no-text-recognized`: No transcript produced
+### Memory Usage
+
+- Set `MAX_MEMORY` based on available system RAM
+- Consider using smaller models for limited resources
+- Monitor memory usage with health endpoint
+
+### GPU Acceleration
+
+1. Install CUDA requirements:
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+```
+
+2. Enable GPU support:
+```bash
+export USE_CUDA=true
+```
+
+3. Uncomment GPU section in docker-compose.yml
+
+## Development
+
+### Running Tests
+
+```bash
+pytest
+```
+
+### Building Docker Image
+
+```bash
+docker build -t whisper-api .
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Memory Errors**
+   - Reduce `MAX_MEMORY`
+   - Use smaller model
+   - Check system resources
+
+2. **GPU Issues**
+   - Verify CUDA installation
+   - Check GPU compatibility
+   - Monitor GPU memory
+
+3. **Connection Issues**
+   - Check ports (8000, 10300)
+   - Verify network settings
+   - Check firewall rules
 
 ## Security
 
-- Rate limiting through concurrent request limits
-- Resource usage monitoring
-- Temporary file cleanup
+- Non-root user in Docker
+- No exposed credentials
+- Regular security updates
 - Input validation
-- Proxy validation
-- Non-root container user
+- Resource limits
 
 ## License
 
 MIT License
+
+## Acknowledgments
+
+- [OpenAI Whisper](https://github.com/openai/whisper)
+- [Wyoming Protocol](https://github.com/rhasspy/wyoming)
+- [FastAPI](https://fastapi.tiangolo.com/)
