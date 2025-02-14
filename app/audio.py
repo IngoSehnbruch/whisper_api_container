@@ -1,10 +1,12 @@
+"""Audio processing utilities."""
 import ffmpeg
 import os
 import tempfile
 import logging
 import numpy as np
+import wave
 from fastapi import UploadFile, HTTPException
-from typing import Optional
+from typing import Optional, Union
 
 logger = logging.getLogger("whisper-api")
 
@@ -13,19 +15,14 @@ class AudioProcessor:
     
     def __init__(self):
         """Initialize the audio processor."""
-        self.sample_rate = 16000  # Required by Home Assistant
+        self.sample_rate = 16000  # Required by Wyoming/Whisper
         self.channels = 1  # Mono
         self.bit_depth = 16
         self._temp_files = []
-        
-        # VAD parameters
-        self.vad_frame_duration = 30  # ms
-        self.vad_threshold = 0.3
-        self.vad_energy_threshold = 0.001
     
     async def process_audio(self, file: UploadFile) -> bytes:
         """
-        Process audio file to match Home Assistant requirements.
+        Process audio file to match Wyoming protocol requirements.
         
         Args:
             file: Audio file upload
@@ -43,81 +40,100 @@ class AudioProcessor:
             temp_input.write(content)
             temp_input.close()
             
-            # Create temporary file for output
-            temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
-            self._temp_files.append(temp_output.name)
-            temp_output.close()
-            
-            try:
-                # Convert audio using ffmpeg
-                (
-                    ffmpeg
-                    .input(temp_input.name)
-                    .output(
-                        temp_output.name,
-                        acodec='pcm_s16le',
-                        ac=self.channels,
-                        ar=self.sample_rate,
-                        f='wav'
-                    )
-                    .overwrite_output()
-                    .run(capture_stdout=True, capture_stderr=True)
-                )
-                
-                # Read processed audio
-                with open(temp_output.name, 'rb') as f:
-                    processed_audio = f.read()
-                
-                return processed_audio
-                
-            except ffmpeg.Error as e:
-                logger.error(f"FFmpeg error: {e.stderr.decode()}")
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": "stt-provider-unsupported-metadata",
-                        "message": "Audio format not supported"
-                    }
-                )
+            return await self._process_audio_file(temp_input.name)
                 
         except Exception as e:
             logger.error(f"Audio processing failed: {str(e)}")
             raise HTTPException(
                 status_code=500,
-                detail={
-                    "error": "stt-stream-failed",
-                    "message": str(e)
-                }
+                detail=str(e)
             )
             
         finally:
-            # Clean up temporary files in background
+            # Clean up temporary files
             self.cleanup()
-    
-    def detect_speech(self, audio_chunk: bytes) -> bool:
+
+    async def process_audio_bytes(self, audio_data: bytes) -> bytes:
         """
-        Simple energy-based Voice Activity Detection.
+        Process raw audio bytes to match Wyoming protocol requirements.
         
         Args:
-            audio_chunk: Raw audio data (16-bit PCM)
+            audio_data: Raw audio data
             
         Returns:
-            True if speech is detected, False otherwise
+            Processed audio data as bytes
         """
         try:
-            # Convert bytes to numpy array
-            audio_data = np.frombuffer(audio_chunk, dtype=np.int16)
+            # Create temporary file for input
+            temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+            self._temp_files.append(temp_input.name)
             
-            # Calculate energy
-            energy = np.mean(np.abs(audio_data))
-            normalized_energy = energy / 32768.0  # Normalize by max int16 value
+            # Write audio data with WAV header
+            with wave.open(temp_input.name, 'wb') as wav_file:
+                wav_file.setnchannels(self.channels)
+                wav_file.setsampwidth(self.bit_depth // 8)
+                wav_file.setframerate(self.sample_rate)
+                wav_file.writeframes(audio_data)
             
-            return normalized_energy > self.vad_energy_threshold
-            
+            return await self._process_audio_file(temp_input.name)
+                
         except Exception as e:
-            logger.error(f"VAD processing failed: {str(e)}")
-            return False
-    
+            logger.error(f"Audio processing failed: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=str(e)
+            )
+            
+        finally:
+            # Clean up temporary files
+            self.cleanup()
+
+    async def _process_audio_file(self, input_file: str) -> bytes:
+        """
+        Process audio file to match requirements.
+        
+        Args:
+            input_file: Path to input audio file
+            
+        Returns:
+            Processed audio data as bytes
+        """
+        # Create temporary file for output
+        temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+        self._temp_files.append(temp_output.name)
+        temp_output.close()
+        
+        try:
+            # Convert audio using ffmpeg
+            (
+                ffmpeg
+                .input(input_file)
+                .output(
+                    temp_output.name,
+                    acodec='pcm_s16le',
+                    ac=self.channels,
+                    ar=self.sample_rate,
+                    f='wav'
+                )
+                .overwrite_output()
+                .run(capture_stdout=True, capture_stderr=True)
+            )
+            
+            # Read processed audio
+            with open(temp_output.name, 'rb') as f:
+                # Skip WAV header (44 bytes) for Wyoming protocol
+                f.seek(44)
+                processed_audio = f.read()
+            
+            return processed_audio
+            
+        except ffmpeg.Error as e:
+            logger.error(f"FFmpeg error: {e.stderr.decode()}")
+            raise HTTPException(
+                status_code=400,
+                detail="Audio format not supported"
+            )
+
     def cleanup(self) -> None:
         """Clean up temporary files."""
         for temp_file in self._temp_files:
@@ -125,6 +141,5 @@ class AudioProcessor:
                 if os.path.exists(temp_file):
                     os.unlink(temp_file)
             except Exception as e:
-                logger.error(f"Failed to delete temporary file {temp_file}: {str(e)}")
-        
-        self._temp_files = []
+                logger.error(f"Failed to remove temporary file {temp_file}: {str(e)}")
+        self._temp_files.clear()

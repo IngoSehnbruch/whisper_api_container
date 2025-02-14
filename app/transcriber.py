@@ -1,130 +1,113 @@
-import whisper
-import torch
+"""Whisper transcription service."""
 import os
+import torch
 import logging
-from typing import Dict, Any, Optional
+import numpy as np
+from typing import Dict, Any, List, Optional
+import whisper
 
 logger = logging.getLogger("whisper-api")
 
 class WhisperTranscriber:
-    """Handles Whisper model management and transcription."""
+    """Handles transcription using Whisper model."""
     
     def __init__(self):
         """Initialize the transcriber."""
-        self.model = None
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.current_model = None
         self.current_model_name = None
-        self.device = self._get_device()
-        self.supported_languages = [
-            "en", "es", "fr", "de", "it", "pt", "nl", "pl", "ru",
-            "zh", "ja", "ko", "ar", "hi", "tr"
+        self.language = None
+        
+        # List of supported models
+        self.supported_models = [
+            "tiny", "base", "small", "medium", "large-v3"
         ]
-        self._initialize_model()
-    
-    def _get_device(self) -> str:
-        """
-        Determine the device to use for inference.
         
-        Returns:
-            Device string ('cuda' or 'cpu')
-        """
-        use_cuda = os.getenv("USE_CUDA", "false").lower() == "true"
+        # Load language codes
+        self.supported_languages = list(whisper.tokenizer.LANGUAGES.keys())
         
-        if use_cuda and torch.cuda.is_available():
-            logger.info("CUDA is available and enabled")
-            return "cuda"
-        elif use_cuda:
-            logger.warning("CUDA was requested but is not available, falling back to CPU")
-        
-        return "cpu"
-    
-    def _initialize_model(self) -> None:
-        """Initialize the Whisper model on startup."""
-        model_name = os.getenv("WHISPER_MODEL", "tiny")
-        try:
-            self.model = whisper.load_model(model_name, device=self.device)
-            self.current_model_name = model_name
-            logger.info(f"Loaded Whisper model '{model_name}' on {self.device}")
-        except Exception as e:
-            logger.error(f"Failed to load model: {str(e)}")
-            raise
+        logger.info(f"Initialized Whisper transcriber (device: {self.device})")
     
     async def load_model(self, model_name: str) -> None:
         """
-        Load a different Whisper model.
+        Load a Whisper model.
         
         Args:
             model_name: Name of the model to load
         """
+        if model_name not in self.supported_models:
+            raise ValueError(f"Unsupported model: {model_name}")
+            
+        if self.current_model_name == model_name:
+            return
+            
         try:
-            if model_name != self.current_model_name:
-                # Clear CUDA cache if using GPU
-                if self.device == "cuda":
-                    torch.cuda.empty_cache()
-                
-                self.model = whisper.load_model(model_name, device=self.device)
-                self.current_model_name = model_name
-                logger.info(f"Switched to model '{model_name}'")
+            logger.info(f"Loading Whisper model: {model_name}")
+            self.current_model = whisper.load_model(model_name, device=self.device)
+            self.current_model_name = model_name
+            logger.info(f"Model loaded successfully: {model_name}")
+            
         except Exception as e:
-            logger.error(f"Failed to load model '{model_name}': {str(e)}")
+            logger.error(f"Failed to load model {model_name}: {str(e)}")
             raise
     
     async def transcribe(
         self,
-        audio: bytes,
-        language: Optional[str] = None
+        audio_data: bytes,
+        language: Optional[str] = None,
+        task: str = "transcribe"
     ) -> Dict[str, Any]:
         """
-        Transcribe audio using the current model.
+        Transcribe audio data.
         
         Args:
-            audio: Audio data as bytes
-            language: Optional language code
-        
-        Returns:
-            Dict containing transcription results
-        """
-        try:
-            # Prepare transcription options
-            options = {}
-            if language:
-                if language not in self.supported_languages:
-                    logger.warning(f"Unsupported language: {language}")
-                else:
-                    options["language"] = language
+            audio_data: Raw PCM audio data (16-bit, 16kHz, mono)
+            language: Optional language code (ISO 639-1)
+            task: Task to perform (transcribe or translate)
             
-            # Perform transcription
-            result = self.model.transcribe(audio, **options)
+        Returns:
+            Dictionary containing transcription results
+        """
+        if not self.current_model:
+            raise RuntimeError("No model loaded")
+            
+        try:
+            # Convert bytes to numpy array
+            audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+            
+            # Transcribe audio
+            result = self.current_model.transcribe(
+                audio_np,
+                language=language or self.language,
+                task=task,
+                fp16=torch.cuda.is_available()
+            )
             
             # Format response
             response = {
                 "text": result["text"],
-                "language": result.get("language", "unknown"),
-                "segments": [
-                    {
-                        "text": seg["text"],
-                        "start": seg["start"],
-                        "end": seg["end"]
-                    }
-                    for seg in result.get("segments", [])
-                ],
-                "duration": len(audio) / 16000  # Based on required sample rate
+                "language": result["language"],
+                "segments": result["segments"]
             }
+            
+            # Add confidence if available
+            if "confidence" in result:
+                response["confidence"] = result["confidence"]
             
             return response
             
         except Exception as e:
             logger.error(f"Transcription failed: {str(e)}")
-            raise RuntimeError(f"Transcription failed: {str(e)}")
+            raise
     
-    def cleanup(self) -> None:
-        """Clean up resources."""
-        try:
-            # Clear CUDA cache if available
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
-            logger.info("Resource cleanup completed")
-            
-        except Exception as e:
-            logger.error(f"Cleanup failed: {str(e)}")
-            # Don't raise here as this is cleanup
+    def get_model_info(self) -> Dict[str, Any]:
+        """Get information about the current model."""
+        return {
+            "name": self.current_model_name,
+            "device": self.device,
+            "loaded": self.current_model is not None,
+            "supported_models": self.supported_models,
+            "supported_languages": self.supported_languages,
+            "cuda_available": torch.cuda.is_available(),
+            "cuda_device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
+        }

@@ -27,12 +27,15 @@ ENV MAX_CONCURRENT=5
 ENV DEFAULT_MODEL=tiny
 ENV USE_CUDA=false
 ENV TRUSTED_PROXIES=""
+ENV WYOMING_HOST=0.0.0.0
+ENV WYOMING_PORT=10300
 
 # Create cache directory
 RUN mkdir -p /app/cache && chown whisper:whisper /app/cache
 
-# Expose port
+# Expose ports
 EXPOSE 8000
+EXPOSE 10300
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

@@ -13,6 +13,7 @@ A FastAPI-based service that provides speech-to-text capabilities using OpenAI's
 - Health checks and logging
 - Docker deployment ready
 - Reverse proxy support
+- Wyoming protocol support for seamless Home Assistant integration
 
 ## Requirements
 
@@ -33,6 +34,8 @@ A FastAPI-based service that provides speech-to-text capabilities using OpenAI's
 - `LOG_LEVEL`: Logging level (default: "INFO")
 - `TRUSTED_PROXIES`: Comma-separated list of trusted proxy hosts (optional)
 - `ROOT_PATH`: Root path when behind a proxy (optional)
+- `WYOMING_HOST`: Wyoming protocol host (default: "0.0.0.0")
+- `WYOMING_PORT`: Wyoming protocol port (default: 10300)
 
 ## GPU Support
 
@@ -139,6 +142,16 @@ Events:
 Binary Audio Format:
 [stt_binary_handler_id (1 byte)][audio_chunk_data]
 ```
+
+### Wyoming Protocol
+
+The server implements the Wyoming protocol on port 10300:
+
+- `Info/AsrInfo`: Get server capabilities
+- `Transcribe`: Start transcription session
+- `AudioStart/AudioChunk/AudioStop`: Stream audio data
+- `Transcript`: Get transcription result
+- `Error`: Error information
 
 ## Deployment
 
