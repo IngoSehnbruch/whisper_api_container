@@ -10,7 +10,7 @@ from pythonjsonlogger import jsonlogger
 from transcriber import WhisperTranscriber
 from audio import AudioProcessor
 from utils import ResourceManager
-from wyoming import WhisperWyomingServer
+from wyoming_faster_whisper import WhisperWyomingServer
 
 # Configure logging
 logger = logging.getLogger("whisper-api")

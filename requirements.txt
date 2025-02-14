@@ -8,4 +8,4 @@ python-json-logger>=2.0.7
 requests==2.31.0  # For testing
 pytest==7.4.3  # For testing
 pytest-asyncio==0.21.1  # For testing
-wyoming>=1.5.0
+wyoming-faster-whisper>=1.5.0

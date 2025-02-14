@@ -4,12 +4,12 @@ import logging
 from typing import Optional, AsyncGenerator
 import wave
 
-from wyoming.asr import Transcribe, Transcript
-from wyoming.audio import AudioChunk, AudioStart, AudioStop
-from wyoming.error import Error
-from wyoming.info import Info, AsrInfo
-from wyoming.server import AsyncServer, AsyncTcpServer
-from wyoming.event import Event
+from wyoming_faster_whisper.asr import Transcribe, Transcript
+from wyoming_faster_whisper.audio import AudioChunk, AudioStart, AudioStop
+from wyoming_faster_whisper.error import Error
+from wyoming_faster_whisper.info import Info, AsrInfo
+from wyoming_faster_whisper.server import AsyncServer, AsyncTcpServer
+from wyoming_faster_whisper.event import Event
 
 from transcriber import WhisperTranscriber
 from audio import AudioProcessor
