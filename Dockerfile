@@ -9,9 +9,20 @@ RUN apt-get update && apt-get install -y \
 # Set up working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies as root
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies in stages for better visibility
+COPY requirements*.txt ./
+
+# 1. Install PyTorch (CPU version)
+RUN echo "Installing PyTorch..." && \
+    pip install --no-cache-dir -r requirements.torch.txt
+
+# 2. Install Whisper and its dependencies
+RUN echo "Installing Whisper..." && \
+    pip install --no-cache-dir -r requirements.whisper.txt
+
+# 3. Install other requirements
+RUN echo "Installing other dependencies..." && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Create non-root user
 RUN useradd -m -u 1000 whisper
