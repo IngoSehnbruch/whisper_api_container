@@ -7,16 +7,21 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN useradd -m -u 1000 whisper
-USER whisper
-
 # Set up working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
-COPY --chown=whisper:whisper requirements.txt .
+# Copy requirements and install dependencies as root
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Create non-root user
+RUN useradd -m -u 1000 whisper
+
+# Create cache directory with proper permissions
+RUN mkdir -p /app/cache && chown -R whisper:whisper /app
+
+# Switch to non-root user
+USER whisper
 
 # Copy application code
 COPY --chown=whisper:whisper ./app /app
@@ -30,9 +35,6 @@ ENV USE_CUDA=false
 ENV TRUSTED_PROXIES=""
 ENV WYOMING_HOST=0.0.0.0
 ENV WYOMING_PORT=10300
-
-# Create cache directory
-RUN mkdir -p /app/cache && chown whisper:whisper /app/cache
 
 # Expose ports
 EXPOSE 8000
