@@ -8,8 +8,7 @@ pydantic==2.4.2
 ffmpeg-python>=0.2.0
 psutil==5.9.5
 python-json-logger>=2.0.7
-websockets==12.0
 requests==2.31.0  # For testing
 pytest==7.4.3  # For testing
 pytest-asyncio==0.21.1  # For testing
-wyoming-protocol>=1.5.0
+git+https://github.com/rhasspy/python-wyoming.git@v1.5.0#egg=wyoming-protocol
