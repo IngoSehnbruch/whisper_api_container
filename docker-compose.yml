@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  whisper-api:
+    build: .
+    container_name: whisper-api
+    ports:
+      - "8000:8000"
+    environment:
+      - WHISPER_MODEL=tiny
+      - MAX_MEMORY=8192
+      - MAX_CONCURRENT=5
+      - LOG_LEVEL=INFO
+      - USE_CUDA=false
+      - TRUSTED_PROXIES=
+    volumes:
+      - whisper_models:/root/.cache/whisper  # Persist Whisper models
+      - whisper_cache:/app/cache
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 2G
+    # Optional GPU support - uncomment if USE_CUDA=true
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  whisper_cache:
+    name: whisper_cache
+  whisper_models:
+    name: whisper_models
